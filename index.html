@@ -5560,6 +5560,7 @@ const AGE_TO_KIND_CD      = {"M": {"전체": [], "30대": ["M35"], "35세이상"
         <button class="tab-btn"        data-tab="tab-records" >🏆 역대기록</button>
         <button class="tab-btn"        data-tab="tab-contest" >🥇 대회입상기록</button>
         <button class="tab-btn"        data-tab="tab-rivals" >🎯 경쟁자 분석</button>
+        <button class="tab-btn"        data-tab="tab-compare">⚡ 종목 비교</button>
       </div>
 
       <!-- 탭: 분석 -->
@@ -5595,9 +5596,8 @@ const AGE_TO_KIND_CD      = {"M": {"전체": [], "30대": ["M35"], "35세이상"
               <th>날짜</th>
               <th>대회명</th>
               <th title="WMA 2023 Age Factor — 30대 환산">전성기 환산</th>
-              <th title="세계기록 대비 연령조정 백분율">AG%</th>
             </tr></thead>
-            <tbody id="kaaf-tbody"><tr><td colspan="10" style="text-align:center;color:#aaa;padding:20px">분석 버튼을 눌러 데이터를 불러오세요</td></tr></tbody>
+            <tbody id="kaaf-tbody"><tr><td colspan="9" style="text-align:center;color:#aaa;padding:20px">분석 버튼을 눌러 데이터를 불러오세요</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -5660,6 +5660,24 @@ const AGE_TO_KIND_CD      = {"M": {"전체": [], "30대": ["M35"], "35세이상"
             <thead id="rival-thead"><tr><th>이름</th><th>시도</th><th>종목</th><th>연령대</th><th colspan="3">연도별 입상기록</th><th>총입상</th></tr></thead>
             <tbody id="rivalTbody"><tr><td colspan="8" style="text-align:center;color:#aaa;padding:20px">경쟁자 데이터를 불러오는 중...</td></tr></tbody>
           </table>
+        </div>
+      </div>
+
+
+      <!-- 탭: 종목 비교 -->
+      <div id="tab-compare" class="tab-pane">
+        <div style="background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.07);margin-bottom:16px">
+          <div style="font-size:.85rem;color:#666;margin-bottom:14px">
+            성별·연령대는 왼쪽 사이드바 설정을 그대로 사용합니다.
+          </div>
+          <div id="compare-rows">
+            <!-- 5개 고정 입력행 -->
+          </div>
+          <button onclick="runCompare()" style="margin-top:12px;padding:9px 24px;background:#1565C0;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:.95rem;cursor:pointer">비교하기</button>
+        </div>
+        <div id="compare-result" style="display:none;background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.07)">
+          <div id="compare-summary" style="margin-bottom:14px;font-size:.95rem"></div>
+          <div style="position:relative;height:260px"><canvas id="compareChart"></canvas></div>
         </div>
       </div>
 
@@ -5964,9 +5982,7 @@ function renderRecordsTable(records, userVal) {
       const r = AgeGrading.ageGrade({ gender, eventKey: event, age: rec.kind_cd, performanceSec: rec.record_val });
       if (r) {
         agEquiv = r.openEquivStr;
-        agPct   = r.classBand
-          ? `<span class="ag-badge" style="background:${r.classColor};color:${r.classFg}">${r.classBand}</span>`
-          : `<span style="color:#bbb;font-size:.8em">${r.agPercent.toFixed(1)}%</span>`;
+
       }
     }
     return `<tr${cls}>
@@ -5979,7 +5995,6 @@ function renderRecordsTable(records, userVal) {
       <td class="muted">${esc(rec.date)}</td>
       <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(rec.meet)}</td>
       <td class="muted" style="white-space:nowrap">${agEquiv}</td>
-      <td style="white-space:nowrap">${agPct}</td>
     </tr>`;
   }).join('');
 }
@@ -5994,11 +6009,9 @@ function renderUserAg(event, gender, age, userVal) {
   if (!r) { box.style.display = 'none'; return; }
   box.style.display = 'block';
   box.innerHTML =
-    `🎯 <strong>${fmtRecord(userVal, event)}</strong> (만 ${r.ageUsed}세 기준) → ` +
-    `30대 환산 <strong>${r.openEquivStr}</strong> · ` +
-    `<span class="ag-badge" style="background:${r.classColor};color:${r.classFg}">` +
-    `${r.classBand || r.agPercent.toFixed(1)+'%'}</span>` +
-    `<br><small style="color:#888">WMA 2023 Age Factor 기준 · World Medal ≥85% · World Final ≥78% · Korea Medal ≥70%</small>`;
+    `🎯 내 기록 <strong>${fmtRecord(userVal, event)}</strong> → ` +
+    `전성기(30대) 환산 <strong>${r.openEquivStr}</strong>` +
+    `<br><small style="color:#888">WMA 2023 Age Factor 적용 · 나이 보정 후 30대 기준 동등 기록</small>`;
 }
 
 // ── 메인 분석 오케스트레이터 ──────────────────────────────────
@@ -6469,6 +6482,154 @@ syncToMobile();
 runAnalysis();
 
 })();
+
+// ── 종목 비교 탭 ────────────────────────────────────────────
+(function() {
+  const COMPARE_EVENTS = [
+    {v:'100m',   l:'100m'},
+    {v:'200m',   l:'200m'},
+    {v:'400m',   l:'400m'},
+    {v:'800m',   l:'800m'},
+    {v:'1000m',  l:'1000m'},
+    {v:'1500m',  l:'1500m'},
+    {v:'3000m',  l:'3000m'},
+    {v:'5000m',  l:'5000m'},
+    {v:'10000m', l:'10000m'},
+    {v:'하프마라톤',l:'하프마라톤'},
+    {v:'마라톤',  l:'마라톤'},
+    {v:'110mH',  l:'110mH (남)'},
+    {v:'100mH',  l:'100mH (여)'},
+    {v:'400mH',  l:'400mH'},
+    {v:'3000mSC',l:'3000m 장애물'},
+  ];
+  const DEFAULTS = ['100m','400m','1500m','5000m','마라톤'];
+
+  function buildRows() {
+    const container = document.getElementById('compare-rows');
+    if (!container) return;
+    container.innerHTML = '';
+    for (let i = 0; i < 5; i++) {
+      const row = document.createElement('div');
+      row.className = 'compare-row';
+      row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px';
+
+      const sel = document.createElement('select');
+      sel.className = 'cmp-event';
+      sel.style.cssText = 'padding:6px 8px;border:1px solid #ccc;border-radius:6px;font-size:.88rem;min-width:140px';
+      sel.innerHTML = '<option value="">— 종목 선택 —</option>' +
+        COMPARE_EVENTS.map(e => `<option value="${e.v}"${e.v===DEFAULTS[i]?' selected':''}>${e.l}</option>`).join('');
+
+      const inp = document.createElement('input');
+      inp.className = 'cmp-record';
+      inp.type = 'text';
+      inp.placeholder = '기록 (예: 4:30 / 14.5)';
+      inp.style.cssText = 'padding:6px 10px;border:1px solid #ccc;border-radius:6px;font-size:.88rem;width:160px';
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') runCompare(); });
+
+      const lbl = document.createElement('span');
+      lbl.className = 'cmp-hint';
+      lbl.style.cssText = 'font-size:.78rem;color:#aaa';
+
+      row.appendChild(sel);
+      row.appendChild(inp);
+      row.appendChild(lbl);
+      container.appendChild(row);
+    }
+  }
+
+  let compareChartInst = null;
+
+  window.runCompare = function() {
+    if (typeof AgeGrading === 'undefined') return;
+    const gender = (document.getElementById('sel-gender')?.value || 'M');
+    const age    = (document.getElementById('sel-age')?.value    || '50대');
+
+    const rows = document.querySelectorAll('.compare-row');
+    const results = [];
+    rows.forEach(row => {
+      const event = row.querySelector('.cmp-event').value;
+      const rec   = row.querySelector('.cmp-record').value.trim();
+      const hint  = row.querySelector('.cmp-hint');
+      if (!event || !rec) { if (hint) hint.textContent = ''; return; }
+      const sec = AgeGrading.parsePerformance(rec);
+      if (!isFinite(sec) || sec <= 0) { if (hint) hint.textContent = '형식 오류'; return; }
+      const r = AgeGrading.ageGrade({ gender, eventKey: event, age, performanceSec: sec });
+      if (!r) { if (hint) hint.textContent = '데이터 없음'; return; }
+      if (hint) hint.textContent = `→ 환산 ${r.openEquivStr}`;
+      results.push({ event, rec, agPercent: r.agPercent, openEquivStr: r.openEquivStr });
+    });
+
+    if (!results.length) return;
+    results.sort((a, b) => b.agPercent - a.agPercent);
+
+    // 요약
+    const best  = results[0];
+    const worst = results[results.length - 1];
+    const gap   = (best.agPercent - worst.agPercent).toFixed(1);
+    const summaryEl = document.getElementById('compare-summary');
+    summaryEl.innerHTML =
+      `<strong>⭐ 가장 강한 종목: ${best.event}</strong> (AG ${best.agPercent.toFixed(1)}%)` +
+      (results.length > 1
+        ? ` &nbsp;|&nbsp; 가장 잠재력 있는 종목: <strong>${worst.event}</strong> (${gap}% 격차)`
+        : '');
+
+    // 차트
+    const labels = results.map(r => r.event);
+    const vals   = results.map(r => r.agPercent);
+    const colors = vals.map((_, i) => i === 0 ? '#FFD700' : 'rgba(21,101,192,0.75)');
+    const mins   = Math.max(55, Math.floor(Math.min(...vals) / 5) * 5 - 5);
+
+    const ctx = document.getElementById('compareChart').getContext('2d');
+    if (compareChartInst) compareChartInst.destroy();
+    compareChartInst = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'AG%',
+          data: vals,
+          backgroundColor: colors,
+          borderRadius: 5,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const r = results[ctx.dataIndex];
+                return ` AG ${r.agPercent.toFixed(1)}%  (전성기 환산: ${r.openEquivStr})`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            min: mins,
+            max: 100,
+            title: { display: true, text: 'AG% (높을수록 강함)' },
+            ticks: { callback: v => v + '%' }
+          },
+          y: { ticks: { font: { size: 13 } } }
+        }
+      }
+    });
+
+    document.getElementById('compare-result').style.display = 'block';
+  };
+
+  // DOM 준비 후 행 생성
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', buildRows);
+  } else {
+    buildRows();
+  }
+})();
+
 </script>
 </body>
 </html>
