@@ -6579,6 +6579,10 @@ runAnalysis();
     const colors = vals.map((_, i) => i === 0 ? '#FFD700' : 'rgba(21,101,192,0.75)');
     const mins   = Math.max(55, Math.floor(Math.min(...vals) / 5) * 5 - 5);
 
+    // 먼저 결과 영역 보이게 (Chart.js가 크기를 올바르게 측정하도록)
+    const resultDiv = document.getElementById('compare-result');
+    resultDiv.style.display = 'block';
+
     const ctx = document.getElementById('compareChart').getContext('2d');
     if (compareChartInst) compareChartInst.destroy();
     compareChartInst = new Chart(ctx, {
@@ -6618,8 +6622,6 @@ runAnalysis();
         }
       }
     });
-
-    document.getElementById('compare-result').style.display = 'block';
   };
 
   // DOM 준비 후 행 생성
